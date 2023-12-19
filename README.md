@@ -28,12 +28,15 @@ The application generates a summary text file (**summary.txt**) to log important
 
 ### Loading Ultrasound Directory
 Navigate to the highest-level directory that DICOM images are stored within.  After selecting, application will scan all sub-folders to identify DICOM images for renaming and open/display the first image to start the renaming process.
+
 ![DirectoryExample](https://raw.githubusercontent.com/tjfreeborn1/US_DICOM_Renamer/main/img/Example_US_DirOpen.gif)
 
 ### Selecting Region of Interest
 The default region of interest that is scanned for words/characters to generate a suggested filename is shown in red after clicking the 'Show ROI' box.  This area can be revised to a user-selected area as needed.
+
 ![DirectoryExample](https://raw.githubusercontent.com/tjfreeborn1/US_DICOM_Renamer/main/img/Example_US_ROI.gif)
 
 ### Revising Filename
 Clicking **Rename** copies the current DICOM image to a new directory, which is organized by participant ID, with either application suggested filename (**OCR Image Name**) or user suggested filename (**New Image Name**).  The applicated suggested name is used by default with the user suggested name used only if additional characters are added to that text box.  After renaming, next image is loaded for review to continue the process.
+
 ![DirectoryExample](https://raw.githubusercontent.com/tjfreeborn1/US_DICOM_Renamer/main/img/Example_US_Rename.gif)
