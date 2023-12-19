@@ -11,6 +11,7 @@ This application requires installation of MATLAB with the Computer Vision Toolbo
 ## Demonstration
 
 ### Loading Ultrasound Directory
+![](imag/Example_US_DirOpen.gif)
 
 ### Selecting Region of Interest
 
