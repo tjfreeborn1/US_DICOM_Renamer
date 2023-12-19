@@ -4,7 +4,7 @@
 Ultrasound DICOM Renamer is a MATLAB-based graphical user interface that facilitates workflow improvements in organizing and renaming DICOM format ultrasound image files. It provides a platform to quickly visualize exported images, generate descriptive filenames using DICOM meta-data and optical character recognition applied to the image, and save renamed files organized by subject.
 
 ## System Requirements
-This application requires installation of MATLAB with the Computer Vision Toolbox and Image Processing Toolbox.  
+This application requires installation of MATLAB with the Computer Vision Toolbox and Image Processing Toolbox.  To use this application, download and run `US_DICOM_Renamer.mlapp`.  This will launch MATLAB (if not already running) and open the GUI for use.
 
 ## Functionalities
 The functionalities that contribute to the process improvements for ultrasound image organization and renaming using this GUI are:
@@ -25,6 +25,7 @@ The application includes error checking to validate files are in DICOM format (a
 The application generates a summary text file (**summary.txt**) to log important actions during the renaming process with the GUI.  These actions include the start and stop time of the session and a list of renamed files (including original names).  This summary is to support evaluation of renaming activities in case there is an unexpected GUI error or process exception that causes the renaming session to end before completing all images. 
 
 ## Demonstrations
+Below are examples of navigating and using the application to load an ultrasound directory, select a region of interest for filename generation, and renaming files.
 
 ### Loading Ultrasound Directory
 Navigate to the highest-level directory that DICOM images are stored within.  After selecting, application will scan all sub-folders to identify DICOM images for renaming and open/display the first image to start the renaming process.
@@ -32,7 +33,7 @@ Navigate to the highest-level directory that DICOM images are stored within.  Af
 ![DirectoryExample](https://raw.githubusercontent.com/tjfreeborn1/US_DICOM_Renamer/main/img/Example_US_DirOpen.gif)
 
 ### Selecting Region of Interest
-The default region of interest that is scanned for words/characters to generate a suggested filename is shown in red after clicking the 'Show ROI' box.  This area can be revised to a user-selected area as needed.
+The default region of interest that is scanned for words/characters to generate a suggested filename is shown in red after clicking the **Show ROI** box.  This area can be revised to a user-selected area as needed.
 
 ![DirectoryExample](https://raw.githubusercontent.com/tjfreeborn1/US_DICOM_Renamer/main/img/Example_US_ROI.gif)
 
