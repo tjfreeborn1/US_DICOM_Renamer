@@ -3,6 +3,8 @@
 ## Description
 Ultrasound DICOM Renamer is a MATLAB-based graphical user interface that facilitates workflow improvements in organizing and renaming DICOM format ultrasound image files. It provides a platform to quickly visualize exported images, generate descriptive filenames using DICOM meta-data and optical character recognition applied to the image, and save renamed files organized by subject.
 
+<img src="https://raw.githubusercontent.com/tjfreeborn1/US_DICOM_Renamer/main/img/GUI_Open.jpg" width="440">
+
 ## System Requirements
 This application requires installation of MATLAB with the Computer Vision Toolbox and Image Processing Toolbox.  To use this application, download and run `US_DICOM_Renamer.mlapp`.  This will launch MATLAB (if not already running) and open the GUI for use.
 
@@ -35,9 +37,9 @@ Navigate to the highest-level directory that DICOM images are stored within.  Af
 ### Selecting Region of Interest
 The default region of interest that is scanned for words/characters to generate a suggested filename is shown in red after clicking the **Show ROI** box.  This area can be revised to a user-selected area as needed.
 
-![DirectoryExample](https://raw.githubusercontent.com/tjfreeborn1/US_DICOM_Renamer/main/img/Example_US_ROI.gif)
+![RegionExample](https://raw.githubusercontent.com/tjfreeborn1/US_DICOM_Renamer/main/img/Example_US_ROI.gif)
 
 ### Revising Filename
 Clicking **Rename** copies the current DICOM image to a new directory, which is organized by participant ID, with either application suggested filename (**OCR Image Name**) or user suggested filename (**New Image Name**).  The applicated suggested name is used by default with the user suggested name used only if additional characters are added to that text box.  After renaming, next image is loaded for review to continue the process.
 
-![DirectoryExample](https://raw.githubusercontent.com/tjfreeborn1/US_DICOM_Renamer/main/img/Example_US_Rename.gif)
+![RevisingExample](https://raw.githubusercontent.com/tjfreeborn1/US_DICOM_Renamer/main/img/Example_US_Rename.gif)
