@@ -12,7 +12,7 @@ This application requires installation of MATLAB with the Computer Vision Toolbo
 The functionalities that contribute to the process improvements for ultrasound image organization and renaming using this GUI are:
 
 ### Image Identification: 
-The complete list of files to rename is generated from all files within the user-selected directory (and all subsequent sub-directories).  Files less than 10 kBytes are excluded as files below this size are typically informational for the operating system and not image files. 
+The complete list of files to rename is generated from all files within the user-selected directory (and all subsequent sub-directories).  Files that are not DICOM in format/content are removed from further processing.   
  
 ### Filename Suggestion: 
 Filenames are suggested using a combination of DICOM meta-data (participant ID) and text identified on the ultrasound image (typically placed by the operator with image context details).  The text is identified using optical character recognition (OCR) applied to the entire ultrasound image. Identified characters are used in a suggested filename for the image in the format **ParticipantID\OCRImageText**.
