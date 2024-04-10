@@ -1,4 +1,4 @@
-classdef US_DICOM_Renamer_exported < matlab.apps.AppBase
+classdef US_DICOM_Renamer < matlab.apps.AppBase
 
     % Properties that correspond to app components
     properties (Access = public)
@@ -39,7 +39,10 @@ classdef US_DICOM_Renamer_exported < matlab.apps.AppBase
         roi_rectangle; % Variable for user-selectable rectangle to modify ROI
 
         summary; % Variable linked to output text file which details renamed files from session
-        version = 2.0; % Variable to track software version
+        version = 3.0; % Variable to track software version
+
+        fileManufacturer; % Variable for DICOM manufacturer data
+        fileModel; % Variable for DICOM instrument model data
     end
 
     methods (Access = private)
@@ -61,10 +64,10 @@ classdef US_DICOM_Renamer_exported < matlab.apps.AppBase
             US_desc = US_desc{1};
             US_desc = regexprep(US_desc, ' ', '_');
         end
-        
+
         function BadCharacterRemoval(app)
             BadChar = '<>:"|?*!@#$%^&()[]{}|';
-            
+
             bad = ismember(BadChar, app.newFilename);
 
             if any(bad)
@@ -76,6 +79,9 @@ classdef US_DICOM_Renamer_exported < matlab.apps.AppBase
                 app.newFilename = erase(app.newFilename, BadChar(i));
             end
         end
+
+      
+
     end
 
 
@@ -94,29 +100,40 @@ classdef US_DICOM_Renamer_exported < matlab.apps.AppBase
 
             % Navigate to renaming directory, get list of all files in
             % directory (exclude directories from listing)
-            cd(app.image_path)
+
+            try
+                cd(app.image_path)
+            catch
+                figure(app.UltrasoundRenameToolUIFigure);
+                return
+            end
+
             list = dir('**/*');
             dirFlags = [list.isdir];
             fileFlags = ~dirFlags;
-
             app.filelist = list(fileFlags);
 
             % Clean up file-list to remove potential hidden files and
-            % files, text files, or non-DICOM images from list.  Cannot use
-            % file extension because not all DICOM images have a file
-            % extension
+            % files, text files, or non-DICOM images from list.
             fileLen = length(app.filelist);
-            for i = 1:1:length(fileLen)
-
-                % Approach to check file sizes and only include files
-                % greater than 10000 bytes.  DiCOM images are MB in
-                % size, so this throws out hidden informational files
-                if(app.filelist(i).bytes < 10000)
+            i = 1;
+            while(i <= fileLen)
+                try
+                    % Setting path/name for ultrasound/DICOM image to view and
+                    if(ispc)
+                        app.fileName = strcat(app.filelist(i).folder, "\", app.filelist(i).name);
+                    else
+                        app.fileName = strcat(app.filelist(i).folder, "/", app.filelist(i).name);
+                    end
+                    app.info = dicominfo(app.fileName);
+                    i = i+1;
+                catch
                     app.filelist(i) = [];
                     fileLen = fileLen - 1;
                 end
+
             end
-           
+
             app.summary = fopen("summary.txt", 'at+' );
             fprintf(app.summary, "Rename Session Start: ");
             fprintf(app.summary, string(datetime));
@@ -128,7 +145,7 @@ classdef US_DICOM_Renamer_exported < matlab.apps.AppBase
             while(app.renameTracker < fileLen)
                 try
                     % Setting path/name for ultrasound/DICOM image to view and
-                  % rename
+                    % rename
                     if(ispc)
                         app.fileName = strcat(app.filelist(app.renameTracker).folder, "\", app.filelist(app.renameTracker).name);
                     else
@@ -137,11 +154,21 @@ classdef US_DICOM_Renamer_exported < matlab.apps.AppBase
 
                     app.info = dicominfo(app.fileName);
                     app.US_Image = dicomread(app.info);
+                    imshow(app.US_Image,'Parent',app.ImageAxes);
                     break;
                 catch
+                    % If file is not in the proper DICOM format or there is
+                    % not an image within the file, generate an error and
+                    % report to the summary log file
                     warning(strcat('Problem opening: ', app.fileName));
                     app.summary = fopen("summary.txt", 'at+' );
                     fprintf(app.summary, "Error Opening File: ");
+                    fprintf(app.summary, app.filelist(app.renameTracker).folder);
+                    if(ispc)
+                        fprintf(app.summary, "\");
+                    else
+                        fprintf(app.summary, "/");
+                    end
                     fprintf(app.summary, app.filelist(app.renameTracker).name);
                     fprintf(app.summary, " (File Skipped)");
                     fprintf(app.summary, '\n');
@@ -151,14 +178,43 @@ classdef US_DICOM_Renamer_exported < matlab.apps.AppBase
                 end
             end
 
-            imshow(app.US_Image,'Parent',app.ImageAxes);
+            app.roi(1) = 1;
+            app.roi(2) = 1;
+            if(~isempty(app.info.Width))
+                app.roi(3) = app.info.Width-app.roi(1);
+            end
 
-            % Create ptoential filename using OCR detected string from
+            if(~isempty(app.info.Height))
+                app.roi(4) = app.info.Height-app.roi(2);
+            end
+            app.fileManufacturer = app.info.Manufacturer;
+            app.fileModel = app.info.ManufacturerModelName;
+
+            % Create potential filename using OCR detected string from
             % ultrasound image and remove characters that could cause
             % saving issues in filesystems
-            US_desc = ImageStringDetect(app);
-            app.newFilename = strcat(app.info.PatientID, "_", US_desc);
-            BadCharacterRemoval(app);
+            try
+                US_desc = ImageStringDetect(app);
+                app.newFilename = strcat(app.info.PatientID, "_", US_desc);
+                BadCharacterRemoval(app);
+            catch
+                % If OCR fails, generate a warning, report to log file,
+                % and return filename that only uses patient ID metadata
+                warning(strcat('Problem applying OCR: ', app.fileName));
+                app.summary = fopen("summary.txt", 'at+' );
+                fprintf(app.summary, "Problem applying OCR: ");
+                fprintf(app.summary, app.filelist(app.renameTracker).folder);
+                if(ispc)
+                        fprintf(app.summary, "\");
+                else
+                        fprintf(app.summary, "/");
+                end
+                fprintf(app.summary, app.filelist(app.renameTracker).name);
+                fprintf(app.summary, " (Auto-naming Skipped)");
+                fprintf(app.summary, '\n');
+                fclose(app.summary);
+                app.newFilename = strcat(app.info.PatientID, "_");
+            end
 
             % Update the GUI with information about the overall renaming
             % process.
@@ -186,16 +242,16 @@ classdef US_DICOM_Renamer_exported < matlab.apps.AppBase
 
         % Button pushed function: RenameButton
         function RenameButtonPushed(app, event)
-        % Description: Function to complete renaming actions which
-        % includes:
-        %   1) Setup new directories to sort renamed images by participant
-        %   2) Check filenames for characters that may cause problems
-        %   3) Check filename is unique so previous images not overwritten
-        %   4) Copy DICOM/ultrasound image to new directory with new name
-        %   5) Open next file for viewing / naming
+            % Description: Function to complete renaming actions which
+            % includes:
+            %   1) Setup new directories to sort renamed images by participant
+            %   2) Check filenames for characters that may cause problems
+            %   3) Check filename is unique so previous images not overwritten
+            %   4) Copy DICOM/ultrasound image to new directory with new name
+            %   5) Open next file for viewing / naming
 
-        % Checking if a directory to store the renamed files exists, if not
-        % creates it
+            % Checking if a directory to store the renamed files exists, if not
+            % creates it
             if not(isfolder("Renamed"))
                 mkdir Renamed
             end
@@ -207,9 +263,9 @@ classdef US_DICOM_Renamer_exported < matlab.apps.AppBase
                 renameStr = "Renamed/";
                 renameStr2 = "/Renamed/";
             end
-        
-        % Checking if directory for unique participant exists to save
-        % renamed file, if not creates it
+
+            % Checking if directory for unique participant exists to save
+            % renamed file, if not creates it
             if not(isfolder(strcat(renameStr, app.info.PatientID)))
                 mkdir( strcat(renameStr, app.info.PatientID));
             end
@@ -245,19 +301,23 @@ classdef US_DICOM_Renamer_exported < matlab.apps.AppBase
             copyfile(app.fileName, strcat(app.image_path, renameStr2, app.info.PatientID, "/", app.newFilename));
             app.summary = fopen("summary.txt", 'at+' );
             fprintf(app.summary, "DICOM File: ");
+            fprintf(app.summary, app.filelist(app.renameTracker).folder);
+                    if(ispc)
+                        fprintf(app.summary, "\");
+                    else
+                        fprintf(app.summary, "/");
+                    end
             fprintf(app.summary, app.filelist(app.renameTracker).name);
             fprintf(app.summary, " copied/renamed ");
             fprintf(app.summary, app.newFilename);
             fprintf(app.summary, '\n');
             fclose(app.summary);
 
-
-
             app.renameTracker = app.renameTracker + 1;
             if(app.renameTracker > length(app.filelist))
                 message = "All files renamed! You can close the app now.";
                 uialert(app.UltrasoundRenameToolUIFigure,message,"success","Icon","success");
-                
+
                 app.summary = fopen("summary.txt", 'at+' );
                 fprintf(app.summary, "Rename Session Close: ");
                 fprintf(app.summary, string(datetime));
@@ -279,11 +339,21 @@ classdef US_DICOM_Renamer_exported < matlab.apps.AppBase
 
                     app.info = dicominfo(app.fileName);
                     app.US_Image = dicomread(app.info);
+                    imshow(app.US_Image,'Parent',app.ImageAxes);
                     break;
                 catch
+                    % If file is not in the proper DICOM format or there is
+                    % not an image within the file, generate an error and
+                    % report to the summary log file
                     warning(strcat('Problem opening: ', app.fileName));
                     app.summary = fopen("summary.txt", 'at+' );
-                    fprintf(app.summary, "Error Opening: ");
+                    fprintf(app.summary, "Error Opening File: ");
+                    fprintf(app.summary, app.filelist(app.renameTracker).folder);
+                    if(ispc)
+                        fprintf(app.summary, "\");
+                    else
+                        fprintf(app.summary, "/");
+                    end
                     fprintf(app.summary, app.filelist(app.renameTracker).name);
                     fprintf(app.summary, " (File Skipped)");
                     fprintf(app.summary, '\n');
@@ -292,18 +362,53 @@ classdef US_DICOM_Renamer_exported < matlab.apps.AppBase
                     fileLen = fileLen - 1;
                 end
             end
-            imshow(app.US_Image,'Parent',app.ImageAxes);
 
-            % Analyze image for text that can be used to rename current
-            % image
-            US_desc = ImageStringDetect(app);
-            
-            % Create potential filename using OCR detected string from
-            % ultrasound image and remove characters that could cause
-            % saving issues in filesystems
-            app.newFilename = strcat(app.info.PatientID, "_", US_desc);
-            BadCharacterRemoval(app);
-            
+
+            if (~strcmp(app.fileManufacturer, app.info.Manufacturer) && ~strcmp(app.fileModel, app.info.ManufacturerModelName))
+                app.roi(1) = 1;
+                app.roi(2) = 1;
+                if(~isempty(app.info.Width))
+                    app.roi(3) = app.info.Width-app.roi(1);
+                end
+
+                if(~isempty(app.info.Height))
+                    app.roi(4) = app.info.Height-app.roi(2);
+                end
+
+                app.fileManufacturer = app.info.Manufacturer;
+                app.fileModel = app.info.ManufacturerModelName;
+            end
+
+            try
+                % Analyze image for text that can be used to rename current
+                % image
+                US_desc = ImageStringDetect(app);
+
+                % Create potential filename using OCR detected string from
+                % ultrasound image and remove characters that could cause
+                % saving issues in filesystems
+                app.newFilename = strcat(app.info.PatientID, "_", US_desc);
+                BadCharacterRemoval(app);
+            catch
+                % If OCR fails, generate a warning, report to log file,
+                % and return filename that only uses patient ID metadata
+                warning(strcat('Problem applying OCR: ', app.fileName));
+                app.summary = fopen("summary.txt", 'at+' );
+                fprintf(app.summary, "Problem applying OCR: ");
+                fprintf(app.summary, app.filelist(app.renameTracker).folder);
+                if(ispc)
+                        fprintf(app.summary, "\");
+                else
+                        fprintf(app.summary, "/");
+                end
+                fprintf(app.summary, app.filelist(app.renameTracker).name);
+                fprintf(app.summary, " (Auto-naming Skipped)");
+                fprintf(app.summary, '\n');
+                fclose(app.summary);
+                app.newFilename = strcat(app.info.PatientID, "_");
+            end
+
+
             % Update the GUI with information about the overall renaming
             % process.
             %   PatientID: patient identifier from DICOM meta-data which
@@ -340,9 +445,8 @@ classdef US_DICOM_Renamer_exported < matlab.apps.AppBase
 
         % Value changed function: ShowROICheckBox
         function ShowROICheckBoxValueChanged(app, event)
-            value = app.ShowROICheckBox.Value;
 
-            if(value == 1)
+            if(app.ShowROICheckBox.Value == 1)
                 app.roi_rectangle = drawrectangle(app.ImageAxes,'Position',app.roi,'Color','r');
             else
                 delete(app.roi_rectangle);
@@ -354,17 +458,55 @@ classdef US_DICOM_Renamer_exported < matlab.apps.AppBase
             % Description: Provides option to draw new rectangular region
             % of interest to be used in the optical character detection
             % process.
-            
+
             delete(app.roi_rectangle);
             app.roi_rectangle = drawrectangle(app.ImageAxes, 'Color','r');
             app.roi = app.roi_rectangle.Position;
+
+            if(app.roi(1) < 1)
+                app.roi(1) = 1;
+            end
+
+            if(app.roi(2) < 1)
+                app.roi(2) = 1;
+            end
+
+            if(app.roi(1)+app.roi(3) > app.info.Width)
+                app.roi(3) = app.info.Width-app.roi(1);
+            end
+
+            if(app.roi(2)+app.roi(4) > app.info.Height)
+                app.roi(4) = app.info.Height-app.roi(2);
+            end
+            app.roi_rectangle.Position = app.roi;
+
+
             app.ShowROICheckBox.Value = 1;
 
             % Analyze image for text that can be used to rename current
             % image
-            US_desc = ImageStringDetect(app);
-            app.newFilename = strcat(app.info.PatientID, "_", US_desc);
-            BadCharacterRemoval(app);
+            try
+                US_desc = ImageStringDetect(app);
+                app.newFilename = strcat(app.info.PatientID, "_", US_desc);
+                BadCharacterRemoval(app);
+            catch
+                % If OCR fails, generate a warning, report to log file,
+                % and return filename that only uses patient ID metadata
+                warning(strcat('Problem applying OCR: ', app.fileName));
+                app.summary = fopen("summary.txt", 'at+' );
+                fprintf(app.summary, "Problem applying OCR: ");
+                fprintf(app.summary, app.filelist(app.renameTracker).folder);
+                if(ispc)
+                        fprintf(app.summary, "\");
+                else
+                        fprintf(app.summary, "/");
+                end
+                fprintf(app.summary, app.filelist(app.renameTracker).name);
+                fprintf(app.summary, " (Auto-naming Skipped)");
+                fprintf(app.summary, '\n');
+                fclose(app.summary);
+                app.newFilename = strcat(app.info.PatientID, "_");
+            end
 
             % Update the GUI with information about the new name
             % OCRImageName: Suggested name based on text identified in
@@ -383,7 +525,7 @@ classdef US_DICOM_Renamer_exported < matlab.apps.AppBase
             % previous images in the overall filelist without having to
             % rename them
 
-            if(app.renameTracker == 1)
+            if(app.renameTracker <= 1)
                 app.renameTracker = length(app.filelist);
             else
                 app.renameTracker = app.renameTracker - 1;
@@ -391,7 +533,7 @@ classdef US_DICOM_Renamer_exported < matlab.apps.AppBase
 
             % Open current ultrasound/DICOM image to get meta-data (info),
             % image data (US_Image), and show image data in GUI
-            while(app.renameTracker > 1)
+            while(app.renameTracker >= 1)
                 try
                     if(ispc)
                         app.fileName = strcat(app.filelist(app.renameTracker).folder, "\", app.filelist(app.renameTracker).name);
@@ -401,27 +543,75 @@ classdef US_DICOM_Renamer_exported < matlab.apps.AppBase
 
                     app.info = dicominfo(app.fileName);
                     app.US_Image = dicomread(app.info);
+                    imshow(app.US_Image,'Parent',app.ImageAxes);
                     break;
                 catch
+                    % If file is not in the proper DICOM format or there is
+                    % not an image within the file, generate an error and
+                    % report to the summary log file
                     warning(strcat('Problem opening: ', app.fileName));
                     app.summary = fopen("summary.txt", 'at+' );
-                    fprintf(app.summary, "Error Opening: ");
+                    fprintf(app.summary, "Error Opening File: ");
+                    fprintf(app.summary, app.filelist(app.renameTracker).folder);
+                    if(ispc)
+                        fprintf(app.summary, "\");
+                    else
+                        fprintf(app.summary, "/");
+                    end
                     fprintf(app.summary, app.filelist(app.renameTracker).name);
                     fprintf(app.summary, " (File Skipped)");
                     fprintf(app.summary, '\n');
                     fclose(app.summary);
                     app.filelist(app.renameTracker) = [];
-                    app.renameTracker = app.renameTracker - 1;
+                    fileLen = fileLen - 1;
                 end
             end
-            imshow(app.US_Image,'Parent',app.ImageAxes);
 
-            % Create ptoential filename using OCR detected string from
+            % If there is a change in the manufacturer and/or manufacturer
+            % model name in the DICOM meta-data, this could mean images
+            % have a different file size.  To handle this, revise the ROI
+            % using the width/height meta-data
+            if (~strcmp(app.fileManufacturer, app.info.Manufacturer) && ~strcmp(app.fileModel, app.info.ManufacturerModelName))
+                app.roi(1) = 1;
+                app.roi(2) = 1;
+                if(~isempty(app.info.Width))
+                    app.roi(3) = app.info.Width-app.roi(1);
+                end
+
+                if(~isempty(app.info.Height))
+                    app.roi(4) = app.info.Height-app.roi(2);
+                end
+
+                app.fileManufacturer = app.info.Manufacturer;
+                app.fileModel = app.info.ManufacturerModelName;
+            end
+
+
+            % Create potential filename using OCR detected string from
             % ultrasound image and remove characters that could cause
             % saving issues in filesystems
-            US_desc = ImageStringDetect(app);
-            app.newFilename = strcat(app.info.PatientID, "_", US_desc);
-            BadCharacterRemoval(app);
+            try
+                US_desc = ImageStringDetect(app);
+                app.newFilename = strcat(app.info.PatientID, "_", US_desc);
+                BadCharacterRemoval(app);
+            catch
+                % If OCR fails, generate a warning, report to log file,
+                % and return filename that only uses patient ID metadata
+                warning(strcat('Problem applying OCR: ', app.fileName));
+                app.summary = fopen("summary.txt", 'at+' );
+                fprintf(app.summary, "Problem applying OCR: ");
+                fprintf(app.summary, app.filelist(app.renameTracker).folder);
+                if(ispc)
+                        fprintf(app.summary, "\");
+                else
+                        fprintf(app.summary, "/");
+                end
+                fprintf(app.summary, app.filelist(app.renameTracker).name);
+                fprintf(app.summary, " (Auto-naming Skipped)");
+                fprintf(app.summary, '\n');
+                fclose(app.summary);
+                app.newFilename = strcat(app.info.PatientID, "_");
+            end
 
             % Update the GUI with information about the overall renaming
             % process.
@@ -444,6 +634,12 @@ classdef US_DICOM_Renamer_exported < matlab.apps.AppBase
             % is present on the image to use
             app.OCRImageNameTextArea.Value = app.newFilename;
             app.NewImageNameEditField.Value = strcat(app.info.PatientID, "_");
+
+            if(app.ShowROICheckBox.Value == 1)
+                app.roi_rectangle = drawrectangle(app.ImageAxes,'Position',app.roi,'Color','r');
+            else
+                delete(app.roi_rectangle);
+            end
         end
 
         % Button pushed function: ForwardButton
@@ -452,12 +648,12 @@ classdef US_DICOM_Renamer_exported < matlab.apps.AppBase
             % next image in the overall filelist without having to
             % rename/save existing file
 
-            if(app.renameTracker == length(app.filelist))
+            if(app.renameTracker >= length(app.filelist))
                 app.renameTracker = 1;
             else
                 app.renameTracker = app.renameTracker + 1;
             end
-            
+
             % Open current ultrasound/DICOM image to get meta-data (info),
             % image data (US_Image), and show image data in GUI
             fileLen = length(app.filelist);
@@ -471,11 +667,21 @@ classdef US_DICOM_Renamer_exported < matlab.apps.AppBase
 
                     app.info = dicominfo(app.fileName);
                     app.US_Image = dicomread(app.info);
+                    imshow(app.US_Image,'Parent',app.ImageAxes);
                     break;
                 catch
+                    % If file is not in the proper DICOM format or there is
+                    % not an image within the file, generate an error and
+                    % report to the summary log file
                     warning(strcat('Problem opening: ', app.fileName));
                     app.summary = fopen("summary.txt", 'at+' );
-                    fprintf(app.summary, "Error Opening: ");
+                    fprintf(app.summary, "Error Opening File: ");
+                    fprintf(app.summary, app.filelist(app.renameTracker).folder);
+                    if(ispc)
+                        fprintf(app.summary, "\");
+                    else
+                        fprintf(app.summary, "/");
+                    end
                     fprintf(app.summary, app.filelist(app.renameTracker).name);
                     fprintf(app.summary, " (File Skipped)");
                     fprintf(app.summary, '\n');
@@ -484,14 +690,49 @@ classdef US_DICOM_Renamer_exported < matlab.apps.AppBase
                     fileLen = fileLen - 1;
                 end
             end
-            imshow(app.US_Image,'Parent',app.ImageAxes);
 
-            % Create ptoential filename using OCR detected string from
+
+            if (~strcmp(app.fileManufacturer, app.info.Manufacturer) && ~strcmp(app.fileModel, app.info.ManufacturerModelName))
+                app.roi(1) = 1;
+                app.roi(2) = 1;
+                if(~isempty(app.info.Width))
+                    app.roi(3) = app.info.Width-app.roi(1);
+                end
+
+                if(~isempty(app.info.Height))
+                    app.roi(4) = app.info.Height-app.roi(2);
+                end
+
+                app.fileManufacturer = app.info.Manufacturer;
+                app.fileModel = app.info.ManufacturerModelName;
+            end
+
+
+            % Create potential filename using OCR detected string from
             % ultrasound image and remove characters that could cause
             % saving issues in filesystems
-            US_desc = ImageStringDetect(app);
-            app.newFilename = strcat(app.info.PatientID, "_", US_desc);
-            BadCharacterRemoval(app);
+            try
+                US_desc = ImageStringDetect(app);
+                app.newFilename = strcat(app.info.PatientID, "_", US_desc);
+                BadCharacterRemoval(app);
+            catch
+                % If OCR fails, generate a warning, report to log file,
+                % and return filename that only uses patient ID metadata
+                warning(strcat('Problem applying OCR: ', app.fileName));
+                app.summary = fopen("summary.txt", 'at+' );
+                fprintf(app.summary, "Problem applying OCR: ");
+                fprintf(app.summary, app.filelist(app.renameTracker).folder);
+                if(ispc)
+                        fprintf(app.summary, "\");
+                else
+                        fprintf(app.summary, "/");
+                end
+                fprintf(app.summary, app.filelist(app.renameTracker).name);
+                fprintf(app.summary, " (Auto-naming Skipped)");
+                fprintf(app.summary, '\n');
+                fclose(app.summary);
+                app.newFilename = strcat(app.info.PatientID, "_");
+            end
 
             % Update the GUI with information about the overall renaming
             % process.
@@ -514,6 +755,14 @@ classdef US_DICOM_Renamer_exported < matlab.apps.AppBase
             % is present on the image to use
             app.OCRImageNameTextArea.Value = app.newFilename;
             app.NewImageNameEditField.Value = strcat(app.info.PatientID, "_");
+
+            if(app.ShowROICheckBox.Value == 1)
+                app.roi_rectangle = drawrectangle(app.ImageAxes,'Position',app.roi,'Color','r');
+            else
+                delete(app.roi_rectangle);
+            end
+
+
         end
     end
 
@@ -525,7 +774,7 @@ classdef US_DICOM_Renamer_exported < matlab.apps.AppBase
 
             % Create UltrasoundRenameToolUIFigure and hide until all components are created
             app.UltrasoundRenameToolUIFigure = uifigure('Visible', 'off');
-            app.UltrasoundRenameToolUIFigure.Position = [100 100 583 561];
+            app.UltrasoundRenameToolUIFigure.Position = [100 100 660 667];
             app.UltrasoundRenameToolUIFigure.Name = 'Ultrasound Rename Tool';
 
             % Create ImageAxes
@@ -534,108 +783,108 @@ classdef US_DICOM_Renamer_exported < matlab.apps.AppBase
             app.ImageAxes.XTick = [];
             app.ImageAxes.XTickLabel = {'[ ]'};
             app.ImageAxes.YTick = [];
-            app.ImageAxes.Position = [36 262 497 267];
+            app.ImageAxes.Position = [13 239 638 390];
 
             % Create SelectUltrasoundDirectoryButton
             app.SelectUltrasoundDirectoryButton = uibutton(app.UltrasoundRenameToolUIFigure, 'push');
             app.SelectUltrasoundDirectoryButton.ButtonPushedFcn = createCallbackFcn(app, @SelectUltrasoundDirectoryButtonPushed, true);
             app.SelectUltrasoundDirectoryButton.FontWeight = 'bold';
-            app.SelectUltrasoundDirectoryButton.Position = [24 188 174 22];
+            app.SelectUltrasoundDirectoryButton.Position = [40 203 174 22];
             app.SelectUltrasoundDirectoryButton.Text = 'Select Ultrasound Directory';
 
             % Create RenameButton
             app.RenameButton = uibutton(app.UltrasoundRenameToolUIFigure, 'push');
             app.RenameButton.ButtonPushedFcn = createCallbackFcn(app, @RenameButtonPushed, true);
             app.RenameButton.FontWeight = 'bold';
-            app.RenameButton.Position = [430 14 100 22];
+            app.RenameButton.Position = [489 29 100 22];
             app.RenameButton.Text = 'Rename';
 
             % Create TotalImagesTextAreaLabel
             app.TotalImagesTextAreaLabel = uilabel(app.UltrasoundRenameToolUIFigure);
             app.TotalImagesTextAreaLabel.HorizontalAlignment = 'right';
-            app.TotalImagesTextAreaLabel.Position = [21 111 77 22];
+            app.TotalImagesTextAreaLabel.Position = [37 126 77 22];
             app.TotalImagesTextAreaLabel.Text = 'Total Images:';
 
             % Create TotalImagesTextArea
             app.TotalImagesTextArea = uitextarea(app.UltrasoundRenameToolUIFigure);
             app.TotalImagesTextArea.HorizontalAlignment = 'center';
-            app.TotalImagesTextArea.Position = [113 112 64 21];
+            app.TotalImagesTextArea.Position = [129 127 64 21];
 
             % Create CurrentImageTextAreaLabel
             app.CurrentImageTextAreaLabel = uilabel(app.UltrasoundRenameToolUIFigure);
             app.CurrentImageTextAreaLabel.HorizontalAlignment = 'right';
-            app.CurrentImageTextAreaLabel.Position = [13 79 85 22];
+            app.CurrentImageTextAreaLabel.Position = [29 94 85 22];
             app.CurrentImageTextAreaLabel.Text = 'Current Image:';
 
             % Create CurrentImageTextArea
             app.CurrentImageTextArea = uitextarea(app.UltrasoundRenameToolUIFigure);
             app.CurrentImageTextArea.HorizontalAlignment = 'center';
-            app.CurrentImageTextArea.Position = [113 81 60 21];
+            app.CurrentImageTextArea.Position = [129 96 64 21];
 
             % Create ParticipantIDTextAreaLabel
             app.ParticipantIDTextAreaLabel = uilabel(app.UltrasoundRenameToolUIFigure);
             app.ParticipantIDTextAreaLabel.HorizontalAlignment = 'right';
-            app.ParticipantIDTextAreaLabel.Position = [17 15 82 22];
+            app.ParticipantIDTextAreaLabel.Position = [33 30 82 22];
             app.ParticipantIDTextAreaLabel.Text = 'Participant ID:';
 
             % Create ParticipantIDTextArea
             app.ParticipantIDTextArea = uitextarea(app.UltrasoundRenameToolUIFigure);
             app.ParticipantIDTextArea.HorizontalAlignment = 'center';
-            app.ParticipantIDTextArea.Position = [114 17 133 21];
+            app.ParticipantIDTextArea.Position = [130 32 133 21];
 
             % Create NewImageNameLabel
             app.NewImageNameLabel = uilabel(app.UltrasoundRenameToolUIFigure);
             app.NewImageNameLabel.HorizontalAlignment = 'right';
-            app.NewImageNameLabel.Position = [267 52 105 22];
+            app.NewImageNameLabel.Position = [326 67 105 22];
             app.NewImageNameLabel.Text = 'New Image Name:';
 
             % Create NewImageNameEditField
             app.NewImageNameEditField = uieditfield(app.UltrasoundRenameToolUIFigure, 'text');
-            app.NewImageNameEditField.Position = [388 52 185 22];
+            app.NewImageNameEditField.Position = [447 67 185 22];
 
             % Create ImageNameTextAreaLabel
             app.ImageNameTextAreaLabel = uilabel(app.UltrasoundRenameToolUIFigure);
             app.ImageNameTextAreaLabel.HorizontalAlignment = 'right';
-            app.ImageNameTextAreaLabel.Position = [22 47 77 22];
+            app.ImageNameTextAreaLabel.Position = [38 62 77 22];
             app.ImageNameTextAreaLabel.Text = 'Image Name:';
 
             % Create ImageNameTextArea
             app.ImageNameTextArea = uitextarea(app.UltrasoundRenameToolUIFigure);
             app.ImageNameTextArea.HorizontalAlignment = 'center';
-            app.ImageNameTextArea.Position = [114 49 132 21];
+            app.ImageNameTextArea.Position = [130 64 132 21];
 
             % Create OCRImageNameLabel
             app.OCRImageNameLabel = uilabel(app.UltrasoundRenameToolUIFigure);
             app.OCRImageNameLabel.HorizontalAlignment = 'right';
-            app.OCRImageNameLabel.Position = [266 84 106 22];
+            app.OCRImageNameLabel.Position = [325 99 106 22];
             app.OCRImageNameLabel.Text = 'OCR Image Name:';
 
             % Create OCRImageNameTextArea
             app.OCRImageNameTextArea = uitextarea(app.UltrasoundRenameToolUIFigure);
-            app.OCRImageNameTextArea.Position = [388 85 184 21];
+            app.OCRImageNameTextArea.Position = [447 100 184 21];
 
             % Create ShowROICheckBox
             app.ShowROICheckBox = uicheckbox(app.UltrasoundRenameToolUIFigure);
             app.ShowROICheckBox.ValueChangedFcn = createCallbackFcn(app, @ShowROICheckBoxValueChanged, true);
             app.ShowROICheckBox.Text = 'Show ROI';
-            app.ShowROICheckBox.Position = [314 122 76 22];
+            app.ShowROICheckBox.Position = [373 137 76 22];
 
             % Create ReviseROIButton
             app.ReviseROIButton = uibutton(app.UltrasoundRenameToolUIFigure, 'push');
             app.ReviseROIButton.ButtonPushedFcn = createCallbackFcn(app, @ReviseROIButtonPushed, true);
-            app.ReviseROIButton.Position = [431 122 100 22];
+            app.ReviseROIButton.Position = [490 137 100 22];
             app.ReviseROIButton.Text = 'Revise ROI';
 
             % Create BackButton
             app.BackButton = uibutton(app.UltrasoundRenameToolUIFigure, 'push');
             app.BackButton.ButtonPushedFcn = createCallbackFcn(app, @BackButtonPushed, true);
-            app.BackButton.Position = [31 150 58 25];
+            app.BackButton.Position = [47 165 58 25];
             app.BackButton.Text = 'Back';
 
             % Create ForwardButton
             app.ForwardButton = uibutton(app.UltrasoundRenameToolUIFigure, 'push');
             app.ForwardButton.ButtonPushedFcn = createCallbackFcn(app, @ForwardButtonPushed, true);
-            app.ForwardButton.Position = [113 150 60 25];
+            app.ForwardButton.Position = [129 165 60 25];
             app.ForwardButton.Text = 'Forward';
 
             % Show the figure after all components are created
@@ -647,7 +896,7 @@ classdef US_DICOM_Renamer_exported < matlab.apps.AppBase
     methods (Access = public)
 
         % Construct app
-        function app = US_DICOM_Renamer_exported
+        function app = US_DICOM_Renamer
 
             % Create UIFigure and components
             createComponents(app)
